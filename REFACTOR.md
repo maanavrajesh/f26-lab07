@@ -171,7 +171,11 @@ dependency from tests.
 
 Read `pricing/`. Not coded, one sentence.
 
-**The pattern.** Which one fits `PriceCalculator`, and the problem that makes
-it fit. Name the problem.
+**The pattern.** Decorator (a stack of `PricingRule` wrappers around the base hourly
+rate) fits `PriceCalculator`. The problem: a price is an ordered series of separate
+published adjustments (weekend surcharge, long-booking discount, tier discount, in
+the order `everyRuleAppliesInOrder` pins), and today adding, removing, or reordering
+a rule means editing the one `price` method.
 
-**Would you apply it today?** Yes or no, one line, with the reason.
+**Would you apply it today?** No. Four fixed rules fit in twenty readable lines and
+are fully tested, and nobody has asked for a new or per-room rule yet.
