@@ -13,20 +13,22 @@ Keep it short and specific. Point at methods, call sites, and test names.
 
 ### The pin (write this section before you direct the refactor)
 
-**The pin.** File and test name, plus one sentence naming the method and the
-observable result it pins. Not "recurring bookings work". Green against the
-shipped code, and you did not edit or delete an existing test method to get
-there.
+**The pin.** `BookingWorkflowCharacterizationTest.recurringSubmitSkipsAnOccurrenceThatOnlyTouchesAnExistingBooking`
+pins that `submit` on a RECURRING request skips a week whose slot only *touches*
+an existing booking (9:00-10:00 next to 10:00-11:00), returning 1 booked, 1 skipped,
+and the message `series S-1: 1 booked, 1 skipped`. It is a new test class, green on
+the shipped code, and no existing test method was edited.
 
-**Why that one, and does a shipped test already cover it?** Of everything
-`BookingWorkflow` does, why is this the behavior worth a test? If something
-shipped comes close, say what your pin adds. If nothing does, say how you
-checked.
+**Why that one, and does a shipped test already cover it?** RECURRING checks room
+conflicts with `<=` while REGULAR and BLOCKED use `<`, so the three overlap checks
+look like duplicates but are not. A refactor that merges them into one helper would
+silently change this. The closest shipped tests (`regularSubmitAcceptsASlotThatStartsWhenAnotherEnds`,
+`recurringSubmitBooksEveryWeekOfAnOpenSeries`) cover the REGULAR boundary and a
+conflict-free series only; I checked every `recurring*` test in `BookingWorkflowTest`.
 
-**What a regeneration would do differently here.** Suppose someone
-threw this class away and regenerated it from a one-line description of what a
-booking workflow does. Name the decision that would be made a second time, and
-say which way it would probably go.
+**What a regeneration would do differently here.** It would decide again whether
+back-to-back slots conflict, and it would almost certainly pick one rule (`<`) for
+every type, so recurring series would start accepting touching slots.
 
 ### The directive
 
