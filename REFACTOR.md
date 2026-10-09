@@ -65,8 +65,8 @@ Move code rather than rewrite it. Verify with mvn -B test (36 green). Do NOT com
 
 ### The result
 
-**The diff and the suite.** The refactor is its own commit, right after the pin
-commit (`git show HEAD~n` / the GitHub commit view). Totals: `Tests run: 36,
+**The diff and the suite.** The pin is commit `648a40c` and the refactor is commit
+`ca3fb6f`, which comes right after it (`git show ca3fb6f`). Totals: `Tests run: 36,
 Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS` (35 shipped + 1 pin).
 
 **What did NOT change: behavior and files.** Each handler is the old `case` body
@@ -103,38 +103,67 @@ Read `notify/`. It works and the outbox tests pass.
 
 ### The patterns present
 
-List every design pattern you can name in that package. For each one, the class
-or classes that carry it.
+- **Singleton:** `NotifierFactory` (private constructor, `getInstance()`).
+- **Factory:** `NotifierFactory.createStrategy()`.
+- **Strategy:** `NotificationStrategy` / `EmailNotificationStrategy`, held by `NotificationHub`.
+- **Observer:** `NotificationHub` (subject) with `NotificationSubscriber` / `OutboxSubscriber`.
+  `OutboxSubscriber` is also a small **Adapter** from `Outbox` to the subscriber interface.
 
 ### The problem each one solves
 
-For each pattern you listed, what would have to be true about the requirements
-for that pattern to be the right call? One sentence each, not in terms of
-"flexibility".
+- **Singleton:** exactly one shared instance must exist because it owns state or
+  a costly resource, such as a loaded template set or a mail connection.
+- **Factory:** the concrete renderer has to be picked at runtime, from config or
+  from the recipient, without callers knowing the choice.
+- **Strategy:** several rendering formats exist and the hub must switch between
+  them, such as email for some recipients and SMS for others.
+- **Observer:** several independent receivers, unknown to the publisher, register
+  for the same events, such as an outbox plus an audit log plus a mail sender.
 
 ### Which of those problems exist here
 
-For each pattern, does the problem it solves exist in this codebase? Point at
-the code that settles it.
+- **Singleton: no.** `NotifierFactory` has no fields, so there is no state to share.
+- **Factory: no.** `createStrategy()` always returns `new EmailNotificationStrategy()`
+  with no input, and its only caller is `NotificationHub`'s constructor (line 22).
+- **Strategy: no.** There is one implementation, and the hub hard-wires it through
+  the factory, so not even a test can swap it.
+- **Observer: no.** `subscribe` is called only from the hub's own constructor (line 23),
+  so there is always exactly one subscriber, which `hubDeliversToItsOneSubscriber` confirms.
 
 ### The simpler structure
 
-**Your proposal.** What replaces `notify/`. Sketch the classes and the one
-method that matters.
+**Your proposal.** Keep `NotificationMessage` and `Outbox`, and drop the rest.
+`NotificationHub.publish(message)` does `outbox.append("To: " + recipient + " |
+Subject: " + subject + " | " + body)` directly. That takes six types down to three.
 
-**What stays the same.** The tested behavior it must still produce, named
-precisely enough that a reader can check it against the shipped tests.
+**What stays the same.** Each `publish` appends exactly one string, in the format
+`To: <recipient> | Subject: <subject> | <body>`, in order, to the same `Outbox`
+returned by `getOutbox()`. That is what `publishedMessageLandsInTheOutboxFullyRendered`,
+`aConfirmationFromTheWorkflowReachesTheOutbox`, and every outbox-size assertion in
+`BookingWorkflowTest` check. `hubDeliversToItsOneSubscriber` and
+`factoryHandsBackTheSameInstance` pin structure, not behavior, so they would go
+away with the layers they test.
 
-**What you would keep, if anything.** If you would keep one interface, say
-which and why. "None of it" is a fine answer if you can defend it.
+**What you would keep, if anything.** None of the interfaces. Each one has a
+single implementation and a single caller, so it adds a hop and no choice. The
+`Outbox` class stays because tests and callers read from it.
 
 ### What would bring each layer back
 
-For at least two of the layers you would remove, what requirement, if it
-arrived next sprint, would make that layer the right structure? Be specific
-about the requirement, not about the pattern.
+- **Observer:** facilities asks for every cancellation to also go to an audit log
+  or a Slack channel, registered only in some deployments. Then several receivers
+  would really be independent.
+- **Strategy (+ Factory):** members can choose SMS instead of email, so the
+  160-character format depends on a per-member setting at publish time.
+- **Singleton:** rendering loads an expensive shared template bundle at startup
+  that every hub must reuse.
 
-**Misuse or anti-pattern?** Say which this is and why the distinction matters.
+**Misuse or anti-pattern?** It is a misuse: each pattern is implemented correctly,
+but the problem it solves does not exist here (speculative generality). The
+distinction matters because misuse is fixed by deleting layers until the
+requirement arrives. An anti-pattern is harmful even when the requirement does
+exist, and the hard-wired Singleton leans that way because it hides the hub's
+dependency from tests.
 
 ---
 
